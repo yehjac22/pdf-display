@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDF Display</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #3a3d42; overflow: hidden; }
+  #pages {
+    height: 100%; overflow: auto; padding: 12px 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  .page {
+    display: block; margin: 0 auto 12px; background: #fff;
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
+    max-width: calc(100% - 24px); height: auto;
+  }
+  #msg {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; text-align: center; color: #b6bcc6;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  #msg[hidden] { display: none; }
+  #msg a { color: #8ab4f8; }
+</style>
+</head>
+<body>
+  <div id="pages"></div>
+  <div id="msg">Loading…</div>
+
+  <script type="module">
+    const PDFJS_VER = '5.4.149';
+    const BASES = [
+      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/`,
+      `https://unpkg.com/pdfjs-dist@${PDFJS_VER}/build/`
+    ];
+
+    const pagesEl = document.getElementById('pages');
+    const msgEl = document.getElementById('msg');
+
+    function say(html) {
+      msgEl.innerHTML = html;
+      msgEl.hidden = false;
+    }
+
+    async function loadPdfjs() {
+      let lastErr;
+      for (const base of BASES) {
+        try {
+          const lib = await import(base + 'pdf.min.mjs');
+          lib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
+          return lib;
+        } catch (e) { lastErr = e; }
+      }
+      throw lastErr;
+    }
+
+    // Optional override so you can preview a specific PDF: ?pdf=<url>
+    function overrideUrl() {
+      const q = new URLSearchParams(location.search).get('pdf');
+      if (q) return q;
+      const h = location.hash.replace(/^#/, '');
+      return h ? new URLSearchParams(h).get('pdf') : null;
+    }
+
+    let pdfDoc = null;
+
+    function pagesAvailableWidth() {
+      return Math.max(320, pagesEl.clientWidth - 24);
+    }
+
+    async function drawPage(num, dpr) {
+      const page = await pdfDoc.getPage(num);
+      const base = page.getViewport({ scale: 1 });
+      const scale = pagesAvailableWidth() / base.width;
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      canvas.className = 'page';
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = Math.floor(viewport.width) + 'px';
+      canvas.style.height = Math.floor(viewport.height) + 'px';
+
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      const old = pagesEl.children[num - 1];
+      if (old) pagesEl.replaceChild(canvas, old);
+      else pagesEl.appendChild(canvas);
+    }
+
+    async function renderAll() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      pagesEl.innerHTML = '';
+      let q = Promise.resolve();
+      for (let n = 1; n <= pdfDoc.numPages; n++) {
+        q = q.then(() => drawPage(n, dpr)).catch(() => {});
+      }
+      await q;
+    }
+
+    async function open(url) {
+      const pdfjsLib = await loadPdfjs();
+      try {
+        pdfDoc = await pdfjsLib.getDocument({
+          url,
+          cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/cmaps/`,
+          cMapPacked: true
+        }).promise;
+      } catch (e) {
+        console.error(e);
+        say('Could not load the PDF.');
+        return false;
+      }
+      msgEl.hidden = true;
+      await renderAll();
+      return true;
+    }
+
+    // Re-fit pages on resize (debounced).
+    let rt;
+    window.addEventListener('resize', () => {
+      clearTimeout(rt);
+      rt = setTimeout(() => { if (pdfDoc) renderAll().catch(() => {}); }, 200);
+    });
+
+    // Poll for a new upload so the embed updates without a manual refresh.
+    async function currentUrl() {
+      const r = await fetch('/api/current', { cache: 'no-store' });
+      const j = await r.json();
+      return j.url || null;
+    }
+
+    async function boot() {
+      const override = overrideUrl();
+      if (override) {
+        await open(override);
+        if (!override.startsWith('blob:')) return;
+      }
+
+      let shown = override || null;
+      const initial = override || (await currentUrl());
+
+      if (!initial) {
+        say('No PDF uploaded yet. <a href="/upload">Upload one</a>.');
+        poll();
+        return;
+      }
+
+      shown = initial;
+      await open(initial);
+      poll();
+
+      async function poll() {
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 30000));
+          try {
+            const next = await currentUrl();
+            if (next && next !== shown) {
+              shown = next;
+              await open(next);
+            }
+          } catch { /* ignore transient errors */ }
+        }
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>
