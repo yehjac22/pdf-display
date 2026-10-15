@@ -10,6 +10,7 @@
   #pages {
     height: 100%; overflow: auto; padding: 12px 0;
     -webkit-overflow-scrolling: touch;
+    cursor: pointer;
   }
   .page {
     display: block; margin: 0 auto 12px; background: #fff;
@@ -24,6 +25,36 @@
   }
   #msg[hidden] { display: none; }
   #msg a { color: #8ab4f8; }
+
+  /* Print: show only the rendered pages, one per sheet, no dark chrome. */
+  @media print {
+    @page { margin: 0; }
+    html, body {
+      background: #fff;
+      overflow: visible;
+      height: auto;
+    }
+    #msg { display: none !important; }
+    #pages {
+      overflow: visible;
+      height: auto;
+      padding: 0;
+      cursor: default;
+    }
+    .page {
+      width: 100% !important;
+      height: auto !important;
+      max-width: 100%;
+      margin: 0;
+      box-shadow: none;
+      page-break-after: always;
+      break-after: page;
+    }
+    .page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+  }
 </style>
 </head>
 <body>
@@ -126,6 +157,30 @@
     window.addEventListener('resize', () => {
       clearTimeout(rt);
       rt = setTimeout(() => { if (pdfDoc) renderAll().catch(() => {}); }, 200);
+    });
+
+    // Click anywhere on the document to open the browser's print dialogue.
+    // Ignore clicks that are text selections, or that land on a link, so the
+    // "Upload one" link and normal reading gestures still behave.
+    let downX = 0;
+    let downY = 0;
+
+    document.addEventListener('pointerdown', (e) => {
+      downX = e.clientX;
+      downY = e.clientY;
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!pdfDoc) return;
+      if (e.target.closest('a')) return;
+
+      // Treat a dragged mouse as a scroll/select, not a print request.
+      const moved = Math.abs(e.clientX - downX) > 6 || Math.abs(e.clientY - downY) > 6;
+      if (moved) return;
+
+      if (window.getSelection && String(window.getSelection()).length > 0) return;
+
+      window.print();
     });
 
     // Poll for a new upload so the embed updates without a manual refresh.
