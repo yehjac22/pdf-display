@@ -142,9 +142,12 @@ app.post('/api/upload', (req, res) => {
           res.json({ ok: true, url: blob.url, size: buf.length });
         }
       } catch (err) {
-        console.error(err);
+        console.error('[upload] blob put failed:', err);
         if (!res.headersSent) {
-          res.status(500).json({ error: 'Upload to blob storage failed' });
+          res.status(500).json({
+            error: 'Upload to blob storage failed',
+            detail: String(err && err.message ? err.message : err)
+          });
         }
       }
     });

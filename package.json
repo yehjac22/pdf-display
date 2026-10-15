@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch server.js",
+    "dev": "node --env-file-if-exists=.env.local --watch server.js",
     "start": "node server.js"
   },
   "dependencies": {
-    "@vercel/blob": "^0.27.0",
+    "@vercel/blob": "^2.8.2",
     "busboy": "^1.6.0",
     "express": "^4.21.1"
   }
