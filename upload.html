@@ -7,32 +7,37 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
+  html, body { min-height: 100%; margin: 0; }
   body {
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: flex-start; justify-content: center;
     background: #14161a; color: #e6e8ec;
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    padding: 24px;
+    padding: 32px 24px 48px;
   }
-  .card {
-    width: 100%; max-width: 460px;
-    background: #1b1e24; border: 1px solid #2c313a; border-radius: 12px;
-    padding: 26px;
-  }
+  .wrap { width: 100%; max-width: 520px; }
   h1 { margin: 0 0 4px; font-size: 19px; font-weight: 600; }
-  .sub { margin: 0 0 22px; color: #9aa1ad; font-size: 13.5px; }
+  .sub { margin: 0 0 20px; color: #9aa1ad; font-size: 13.5px; }
+
+  .pw-row { margin-bottom: 22px; }
   label { display: block; font-size: 13px; color: #9aa1ad; margin-bottom: 6px; }
   input[type=password] {
     width: 100%; padding: 10px 12px; border-radius: 8px;
-    border: 1px solid #2c313a; background: #14161a; color: #e6e8ec;
+    border: 1px solid #2c313a; background: #171a1f; color: #e6e8ec;
     font-size: 14px;
   }
   input[type=password]:focus { outline: 2px solid #3b82f6; outline-offset: 1px; border-color: transparent; }
-  .field { margin-bottom: 16px; }
+
+  .card {
+    background: #1b1e24; border: 1px solid #2c313a; border-radius: 12px;
+    padding: 18px 20px 20px; margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
+  .card .meta { margin: 0 0 14px; font-size: 12.5px; color: #9aa1ad; min-height: 18px; word-break: break-all; }
+  .card .meta.ok { color: #4ade80; }
 
   .drop {
     border: 1.5px dashed #39404b; border-radius: 10px;
-    padding: 26px 16px; text-align: center; color: #9aa1ad;
+    padding: 20px 14px; text-align: center; color: #9aa1ad;
     cursor: pointer; transition: border-color .15s, background-color .15s;
   }
   .drop:hover { border-color: #4b5361; }
@@ -41,149 +46,211 @@
   .drop strong { display: block; color: #e6e8ec; font-weight: 500; margin-bottom: 2px; }
   .drop .small { font-size: 12.5px; }
 
-  button {
-    width: 100%; padding: 11px 16px; margin-top: 20px;
+  button.upload {
+    width: 100%; padding: 10px 16px; margin-top: 14px;
     border: 0; border-radius: 8px; background: #3b82f6; color: #fff;
-    font-size: 14.5px; font-weight: 500; cursor: pointer;
+    font-size: 14px; font-weight: 500; cursor: pointer;
     transition: background-color .15s;
   }
-  button:hover:not(:disabled) { background: #2f6fd8; }
-  button:disabled { opacity: .45; cursor: default; }
+  button.upload:hover:not(:disabled) { background: #2f6fd8; }
+  button.upload:disabled { opacity: .4; cursor: default; }
 
-  .status { margin-top: 16px; font-size: 13.5px; min-height: 20px; }
-  .status.ok { color: #4ade80; }
-  .status.err { color: #f87171; }
-
-  .bar {
-    height: 4px; border-radius: 2px; background: #2c313a;
-    margin-top: 14px; overflow: hidden; display: none;
-  }
+  .bar { height: 4px; border-radius: 2px; background: #2c313a; margin-top: 12px; overflow: hidden; display: none; }
   .bar.show { display: block; }
   .bar i { display: block; height: 100%; width: 0; background: #3b82f6; transition: width .15s; }
 
-  a { color: #60a5fa; }
+  .status { margin-top: 10px; font-size: 13.5px; min-height: 20px; }
+  .status.ok { color: #4ade80; }
+  .status.err { color: #f87171; }
+
+  .links { margin-top: 4px; font-size: 12.5px; color: #5b6270; }
+  .links a { color: #60a5fa; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  .links code { color: #9aa1ad; font-size: 12.5px; }
+  .foot { margin-top: 18px; font-size: 12.5px; color: #5b6270; }
 </style>
 </head>
 <body>
-  <div class="card">
+  <div class="wrap">
     <h1>Upload PDF</h1>
-    <p class="sub">Replaces whatever is currently on the display page.</p>
+    <p class="sub">Each document has its own slot. Uploading replaces only that one.</p>
 
-    <div class="field">
+    <div class="pw-row">
       <label for="pw">Password</label>
       <input id="pw" type="password" autocomplete="current-password" placeholder="Enter upload password" />
     </div>
 
-    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a PDF">
-      <strong id="dropTitle">Choose a PDF</strong>
-      <span class="small" id="dropSub">or drag and drop it here</span>
-    </div>
-    <input id="file" type="file" accept="application/pdf,.pdf" hidden />
+    <div id="cards"></div>
 
-    <div class="bar" id="bar"><i id="barFill"></i></div>
-
-    <button id="go" disabled>Upload and display</button>
-    <div class="status" id="status"></div>
-    <p class="sub" style="margin:18px 0 0"><a href="/">&larr; Go to display page</a></p>
+    <p class="foot">The display link is what you embed in Wix.</p>
   </div>
 
   <script>
     const pwEl = document.getElementById('pw');
-    const dropEl = document.getElementById('drop');
-    const dropTitle = document.getElementById('dropTitle');
-    const dropSub = document.getElementById('dropSub');
-    const fileEl = document.getElementById('file');
-    const goEl = document.getElementById('go');
-    const statusEl = document.getElementById('status');
-    const barEl = document.getElementById('bar');
-    const barFill = document.getElementById('barFill');
+    const cardsEl = document.getElementById('cards');
 
-    let picked = null;
+    const uploaded = {}; // slug -> File
+    let docs = [];
 
-    function refresh() {
-      goEl.disabled = !(picked && pwEl.value);
+    function say(card, msg, cls) {
+      const el = card.querySelector('.status');
+      el.textContent = msg || '';
+      el.className = 'status' + (cls ? ' ' + cls : '');
     }
 
-    function setFile(f) {
+    function refreshBtn(card, slug) {
+      card.querySelector('button.upload').disabled = !(uploaded[slug] && pwEl.value);
+    }
+
+    function setFile(card, slug, f) {
       if (!f) return;
       const ok = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-      if (!ok) { say('That file is not a PDF.', 'err'); return; }
-      picked = f;
-      dropEl.classList.add('has-file');
-      dropTitle.textContent = f.name;
-      dropSub.textContent = (f.size / 1024 / 1024).toFixed(2) + ' MB';
-      say('');
-      refresh();
+      if (!ok) { say(card, 'That file is not a PDF.', 'err'); return; }
+
+      uploaded[slug] = f;
+      card.querySelector('.drop').classList.add('has-file');
+      card.querySelector('.drop strong').textContent = f.name;
+      card.querySelector('.drop .small').textContent = (f.size / 1024 / 1024).toFixed(2) + ' MB';
+      say(card, '');
+      refreshBtn(card, slug);
     }
 
-    function say(msg, cls) {
-      statusEl.textContent = msg || '';
-      statusEl.className = 'status' + (cls ? ' ' + cls : '');
-    }
+    function buildCard(doc) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.slug = doc.slug;
+      card.innerHTML = `
+        <h2>${doc.label}</h2>
+        <p class="meta"></p>
+        <div class="drop" tabindex="0" role="button" aria-label="Choose a PDF for ${doc.label}">
+          <strong>Choose a PDF</strong>
+          <span class="small">or drag and drop it here</span>
+        </div>
+        <input type="file" accept="application/pdf,.pdf" hidden />
+        <div class="bar"><i></i></div>
+        <button class="upload" disabled>Upload ${doc.label}</button>
+        <div class="status"></div>
+        <div class="links">
+          <a href="/${doc.slug}" target="_blank" rel="noopener">Open display</a>
+          &nbsp;·&nbsp;
+          <code>/${doc.slug}</code>
+        </div>
+      `;
 
-    dropEl.addEventListener('click', () => fileEl.click());
-    dropEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileEl.click(); }
-    });
-    fileEl.addEventListener('change', () => setFile(fileEl.files[0]));
+      const drop = card.querySelector('.drop');
+      const fileEl = card.querySelector('input[type=file]');
+      const btn = card.querySelector('button.upload');
 
-    ;['dragenter', 'dragover'].forEach((ev) =>
-      dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.add('over'); })
-    );
-    ;['dragleave', 'drop'].forEach((ev) =>
-      dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.remove('over'); })
-    );
-    dropEl.addEventListener('drop', (e) => {
-      if (e.dataTransfer && e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
-    });
+      drop.addEventListener('click', () => fileEl.click());
+      drop.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileEl.click(); }
+      });
+      fileEl.addEventListener('change', () => setFile(card, doc.slug, fileEl.files[0]));
 
-    pwEl.addEventListener('input', refresh);
-
-    goEl.addEventListener('click', () => {
-      if (!picked || !pwEl.value) return;
-
-      const form = new FormData();
-      form.append('file', picked, picked.name);
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload');
-      xhr.setRequestHeader('X-Upload-Password', pwEl.value);
-
-      goEl.disabled = true;
-      say('Uploading…');
-      barEl.classList.add('show');
-      barFill.style.width = '0%';
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          barFill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
-        }
+      ['dragenter', 'dragover'].forEach((ev) =>
+        drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); })
+      );
+      ['dragleave', 'drop'].forEach((ev) =>
+        drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); })
+      );
+      drop.addEventListener('drop', (e) => {
+        if (e.dataTransfer && e.dataTransfer.files.length) setFile(card, doc.slug, e.dataTransfer.files[0]);
       });
 
-      xhr.addEventListener('load', () => {
-        let body = {};
-        try { body = JSON.parse(xhr.responseText); } catch {}
-        if (xhr.status === 200 && body.ok) {
-          barFill.style.width = '100%';
-          say('Uploaded. It is now live on the display page.', 'ok');
-          goEl.disabled = false;
+      pwEl.addEventListener('input', () => refreshBtn(card, doc.slug));
+
+      btn.addEventListener('click', () => {
+        const f = uploaded[doc.slug];
+        if (!f || !pwEl.value) return;
+
+        const form = new FormData();
+        form.append('doc', doc.slug);
+        form.append('file', f, f.name);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+        xhr.setRequestHeader('X-Upload-Password', pwEl.value);
+
+        const bar = card.querySelector('.bar');
+        const fill = card.querySelector('.bar i');
+        btn.disabled = true;
+        say(card, 'Uploading…');
+        bar.classList.add('show');
+        fill.style.width = '0%';
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) fill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+        });
+
+        xhr.addEventListener('load', () => {
+          let body = {};
+          try { body = JSON.parse(xhr.responseText); } catch {}
+          if (xhr.status === 200 && body.ok) {
+            fill.style.width = '100%';
+            say(card, 'Uploaded. It is now live on the display page.', 'ok');
+          } else {
+            bar.classList.remove('show');
+            say(card, body.error || ('Upload failed (' + xhr.status + ')'), 'err');
+          }
+          refreshBtn(card, doc.slug);
+          markLive(card, doc.slug);
+        });
+
+        xhr.addEventListener('error', () => {
+          bar.classList.remove('show');
+          say(card, 'Network error during upload.', 'err');
+          refreshBtn(card, doc.slug);
+        });
+
+        xhr.send(form);
+      });
+
+      return card;
+    }
+
+    async function markLive(card, slug) {
+      const meta = card.querySelector('.meta');
+      try {
+        const r = await fetch('/api/current?doc=' + encodeURIComponent(slug), { cache: 'no-store' });
+        const j = await r.json();
+        if (j.url) {
+          const when = j.uploadedAt ? new Date(j.uploadedAt).toLocaleString() : '';
+          meta.textContent = `Live since ${when}`;
+          meta.classList.add('ok');
         } else {
-          barEl.classList.remove('show');
-          say(body.error || ('Upload failed (' + xhr.status + ')'), 'err');
-          goEl.disabled = false;
+          meta.textContent = 'Nothing uploaded yet.';
+          meta.classList.remove('ok');
         }
-      });
+      } catch {
+        meta.textContent = '';
+      }
+    }
 
-      xhr.addEventListener('error', () => {
-        barEl.classList.remove('show');
-        say('Network error during upload.', 'err');
-        goEl.disabled = false;
-      });
+    (async () => {
+      try {
+        const r = await fetch('/api/docs', { cache: 'no-store' });
+        const j = await r.json();
+        docs = j.docs || [];
+      } catch {
+        cardsEl.textContent = 'Could not load document list.';
+        return;
+      }
 
-      xhr.send(form);
-    });
+      cardsEl.innerHTML = '';
+      const cards = docs.map(buildCard);
+      cards.forEach((c) => cardsEl.appendChild(c));
+      cards.forEach((c) => markLive(c, c.dataset.slug));
 
-    refresh();
+      // Deep link from the display page: /upload#schedule focuses that card.
+      const hash = location.hash.replace(/^#/, '');
+      if (hash) {
+        const target = cardsEl.querySelector('.card[data-slug="' + CSS.escape(hash) + '"]');
+        if (target) {
+          target.scrollIntoView({ block: 'center' });
+          target.querySelector('.drop').focus();
+        }
+      }
+    })();
   </script>
 </body>
 </html>

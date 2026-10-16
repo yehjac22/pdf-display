@@ -8,7 +8,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = process.env.PORT || 8000;
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
-const CURRENT_PATH = 'current.pdf'; // fixed pathname -> one live PDF at a time
+
+// Each document is one live PDF at a fixed blob path. Adding an entry here
+// automatically creates its display route (/<slug>) and upload section.
+const DOCS = [
+  { slug: 'schedule', label: 'Schedule' },
+  { slug: 'monthly', label: 'Monthly' }
+];
+
+const DOC_BY_SLUG = new Map(DOCS.map((d) => [d.slug, d]));
+const blobPathFor = (slug) => `${slug}.pdf`;
 
 // Password: env var wins, otherwise a dev default so you can try it locally.
 const PASSWORD = process.env.UPLOAD_PASSWORD || 'letmein';
@@ -54,39 +63,63 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Display page: plain page that finds + renders the current PDF ---
+// --- Display page: renders one document, chosen by slug ---
+// "/" keeps working so the original single-document embed does not break; it
+// falls back to the first document in DOCS.
 app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, 'display.html'));
 });
 
-// --- Upload page ---
+app.get('/:slug', (req, res, next) => {
+  if (!DOC_BY_SLUG.has(req.params.slug)) return next();
+  res.sendFile(path.join(__dirname, 'display.html'));
+});
+
+// --- Upload page: lists every document with its own upload section ---
 app.get('/upload', (_req, res) => {
   res.sendFile(path.join(__dirname, 'upload.html'));
 });
 
-// --- API: what PDF should the display page show? ---
-app.get('/api/current', async (_req, res) => {
+// --- API: which documents exist, and their labels ---
+app.get('/api/docs', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ docs: DOCS });
+});
+
+// --- API: what PDF should a given display show? ---
+// `doc` is a slug. Omitted -> first document, for the root display route.
+app.get('/api/current', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+
+  const slug = req.query.doc || DOCS[0].slug;
+  if (!DOC_BY_SLUG.has(slug)) {
+    return res.status(404).json({ error: 'Unknown document' });
+  }
+
   try {
-    const meta = await head(CURRENT_PATH);
-    res.setHeader('Cache-Control', 'no-store');
+    const meta = await head(blobPathFor(slug));
     return res.json({
+      doc: slug,
       url: meta.url,
       size: meta.size,
       uploadedAt: meta.uploadedAt
     });
   } catch {
-    // No blob yet -> nothing uploaded
-    res.setHeader('Cache-Control', 'no-store');
-    return res.json({ url: null });
+    // No blob yet -> nothing uploaded for this document
+    return res.json({ doc: slug, url: null });
   }
 });
 
-// --- API: upload / replace the current PDF ---
+// --- API: upload / replace one document's PDF ---
 app.post('/api/upload', (req, res) => {
   const password = req.headers['x-upload-password'];
   if (!password || password !== PASSWORD) {
     return res.status(401).json({ error: 'Wrong password' });
   }
+
+  // Accepts the slug as ?doc= or a `doc` form field.
+  const slug = String(req.query.doc || '').trim();
+  const fieldSlugPromise = [];
 
   let bb;
   try {
@@ -98,8 +131,60 @@ app.post('/api/upload', (req, res) => {
     return res.status(400).json({ error: 'Expected multipart/form-data' });
   }
 
+  // Busboy can emit `field` events before `file`, but not guaranteed, so we
+  // buffer the file until we know the slug.
+  let resolvedSlug = slug || null;
+  let pending = null;
+
+  function finalize() {
+    const target = resolvedSlug || DOCS[0].slug;
+    if (!DOC_BY_SLUG.has(target)) {
+      if (!res.headersSent) res.status(404).json({ error: 'Unknown document' });
+      return;
+    }
+    if (!pending) return;
+
+    const { buf, tooLarge } = pending;
+    pending = null;
+
+    if (tooLarge) {
+      if (!res.headersSent) {
+        res.status(413).json({ error: 'File too large (max 25 MB)' });
+      }
+      return;
+    }
+
+    put(blobPathFor(target), buf, {
+      access: 'public',
+      contentType: 'application/pdf',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      cacheControlMaxAge: 60
+    })
+      .then((blob) => {
+        if (!res.headersSent) {
+          res.json({ ok: true, doc: target, url: blob.url, size: buf.length });
+        }
+      })
+      .catch((err) => {
+        console.error('[upload] blob put failed:', err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: 'Upload to blob storage failed',
+            detail: String(err && err.message ? err.message : err)
+          });
+        }
+      });
+  }
+
+  bb.on('field', (name, value) => {
+    if (name === 'doc' && value) {
+      resolvedSlug = String(value).trim();
+      finalize();
+    }
+  });
+
   let handled = false;
-  let tooLarge = false;
 
   bb.on('file', (_name, file, info) => {
     if (handled) {
@@ -116,46 +201,30 @@ app.post('/api/upload', (req, res) => {
     }
 
     const chunks = [];
+    let tooLarge = false;
+
     file.on('data', (c) => chunks.push(c));
     file.on('limit', () => {
       tooLarge = true;
       file.resume();
     });
 
-    file.on('close', async () => {
-      if (tooLarge) {
-        if (!res.headersSent) {
-          res.status(413).json({ error: 'File too large (max 25 MB)' });
-        }
-        return;
-      }
-      try {
-        const buf = Buffer.concat(chunks);
-        const blob = await put(CURRENT_PATH, buf, {
-          access: 'public',
-          contentType: 'application/pdf',
-          addRandomSuffix: false,
-          allowOverwrite: true,
-          cacheControlMaxAge: 60
-        });
-        if (!res.headersSent) {
-          res.json({ ok: true, url: blob.url, size: buf.length });
-        }
-      } catch (err) {
-        console.error('[upload] blob put failed:', err);
-        if (!res.headersSent) {
-          res.status(500).json({
-            error: 'Upload to blob storage failed',
-            detail: String(err && err.message ? err.message : err)
-          });
-        }
-      }
+    file.on('close', () => {
+      pending = { buf: Buffer.concat(chunks), tooLarge };
+      // If the slug came from the query string, there is no field event to
+      // wait for, so finalize as soon as the file is complete.
+      if (slug) finalize();
     });
   });
 
   bb.on('close', () => {
     if (!handled && !res.headersSent) {
-      res.status(400).json({ error: 'No file received' });
+      return res.status(400).json({ error: 'No file received' });
+    }
+    // Slug supplied only as a form field that arrived after the file.
+    if (pending) finalize();
+    else if (!res.headersSent && resolvedSlug && !DOC_BY_SLUG.has(resolvedSlug)) {
+      res.status(404).json({ error: 'Unknown document' });
     }
   });
 
@@ -169,8 +238,10 @@ app.post('/api/upload', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`PDF Display running:  http://localhost:${PORT}`);
-  console.log(`  display  -> http://localhost:${PORT}/`);
-  console.log(`  upload   -> http://localhost:${PORT}/upload`);
+  for (const d of DOCS) {
+    console.log(`  ${d.label.padEnd(9)} -> http://localhost:${PORT}/${d.slug}`);
+  }
+  console.log(`  upload    -> http://localhost:${PORT}/upload`);
   if (!process.env.UPLOAD_PASSWORD) {
     console.log(`  [dev] password is "${PASSWORD}" (set UPLOAD_PASSWORD to change)`);
   }

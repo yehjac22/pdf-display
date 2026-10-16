@@ -96,6 +96,13 @@
       return h ? new URLSearchParams(h).get('pdf') : null;
     }
 
+    // Which document this page shows. Taken from the path (/schedule,
+    // /monthly); "/" falls back to the server's default document.
+    function docSlug() {
+      const seg = location.pathname.split('/').filter(Boolean)[0];
+      return seg ? decodeURIComponent(seg) : null;
+    }
+
     let pdfDoc = null;
 
     function pagesAvailableWidth() {
@@ -185,7 +192,9 @@
 
     // Poll for a new upload so the embed updates without a manual refresh.
     async function currentUrl() {
-      const r = await fetch('/api/current', { cache: 'no-store' });
+      const slug = docSlug();
+      const qs = slug ? `?doc=${encodeURIComponent(slug)}` : '';
+      const r = await fetch(`/api/current${qs}`, { cache: 'no-store' });
       const j = await r.json();
       return j.url || null;
     }
@@ -201,7 +210,9 @@
       const initial = override || (await currentUrl());
 
       if (!initial) {
-        say('No PDF uploaded yet. <a href="/upload">Upload one</a>.');
+        const slug = docSlug();
+        const uploadHref = slug ? `/upload#${slug}` : '/upload';
+        say(`No PDF uploaded yet. <a href="${uploadHref}">Upload one</a>.`);
         poll();
         return;
       }
